@@ -100,45 +100,25 @@ bot = commands.Bot(
 # DATABASE CONNECTION FUNCTIONS
 # ============================================================================
 
-async def get_database_connection():
-    """
-    Creates a connection to the MySQL database.
-    This function handles errors gracefully so the bot doesn't crash.
-    
-    Returns:
-        mysql.connector connection object or None if failed
-    """
-    try:
-        connection = mysql.connector.connect(**DATABASE_CONFIG)
-        return connection
-    except mysql.connector.Error as error:
-        print(f"❌ Database connection failed: {error}")
-        return None
-
 async def fetch_leaderboard_data(leaderboard_key: str, limit: int = 10) -> List[Dict[str, Any]]:
     """
     Fetches leaderboard data from the database.
-    
-    Args:
-        leaderboard_key: Which leaderboard to fetch (like "general", "dragon")
-        limit: How many top players to get (default 10)
-    
-    Returns:
-        List of player dictionaries with nickname, kills, levels_reached
     """
     
     # Get leaderboard configuration
     config = LEADERBOARDS.get(leaderboard_key)
     if not config:
+        print(f"❌ No config found for key: {leaderboard_key}")
         return []
     
     # Connect to database
     connection = await get_database_connection()
     if not connection:
+        print(f"❌ Database connection failed for {leaderboard_key}")
         return []
     
     try:
-        cursor = connection.cursor(dictionary=True)  # Return results as dictionaries
+        cursor = connection.cursor(dictionary=True)
         
         if config["join_users"]:
             # For general leaderboard - need to join with Users table to get nicknames
@@ -150,24 +130,35 @@ async def fetch_leaderboard_data(leaderboard_key: str, limit: int = 10) -> List[
                 LIMIT %s
             """.format(config["table"])
         else:
-            # For tournament leaderboards - username is already in the table
-            query = """
-                SELECT username as nickname, kills, levels_reached
-                FROM {}
-                ORDER BY levels_reached DESC, kills DESC  
-                LIMIT %s
-            """.format(config["table"])
+            # For tournament leaderboards - check table structure
+            if leaderboard_key == "3ull":
+                # 3ull table has user_id column with usernames
+                query = """
+                    SELECT user_id as nickname, kills, levels_reached
+                    FROM {}
+                    ORDER BY levels_reached DESC, kills DESC  
+                    LIMIT %s
+                """.format(config["table"])
+            else:
+                # Other tournament tables have username column
+                query = """
+                    SELECT username as nickname, kills, levels_reached
+                    FROM {}
+                    ORDER BY levels_reached DESC, kills DESC  
+                    LIMIT %s
+                """.format(config["table"])
         
+        print(f"🔍 Executing query for {leaderboard_key}: {query}")
         cursor.execute(query, (limit,))
         results = cursor.fetchall()
+        print(f"📊 Found {len(results)} results for {leaderboard_key}")
         
         return results
         
     except mysql.connector.Error as error:
-        print(f"❌ Database query failed: {error}")
+        print(f"❌ Database query failed for {leaderboard_key}: {error}")
         return []
     finally:
-        # Always close the connection to prevent memory leaks
         if connection.is_connected():
             cursor.close()
             connection.close()
