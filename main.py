@@ -15,10 +15,14 @@ from typing import List, Dict, Any
 import asyncio
 from threading import Thread
 from flask import Flask
+import time
 
 # ============================================================================
 # BOT CONFIGURATION
 # ============================================================================
+
+last_leaderboard_time = 0
+COOLDOWN_SECONDS = 300
 
 # Simple web server for Render health checks
 app = Flask(__name__)
@@ -319,6 +323,22 @@ async def leaderboards_command(ctx):
     Args:
         ctx: Discord context (contains info about who sent the command, where, etc.)
     """
+    global last_leaderboard_time
+    
+    current_time = time.time()
+    
+    # Check if cooldown is still active
+    if current_time - last_leaderboard_time < COOLDOWN_SECONDS:
+        remaining_time = COOLDOWN_SECONDS - (current_time - last_leaderboard_time)
+        minutes = int(remaining_time // 60)
+        seconds = int(remaining_time % 60)
+        
+        await ctx.send(f"Leaderboard is cooling down. Try again in {minutes}m {seconds}s.")
+        return
+    
+    # Update the last command time
+    last_leaderboard_time = current_time
+    
     print(f"🎯 !graveyard command triggered by {ctx.author}")
     
     # Create embed for the main menu
@@ -336,7 +356,7 @@ async def leaderboards_command(ctx):
     
     embed.set_footer(text="Graveyard Antics TD | Menu expires in 5 minutes")
     
-        # Create the dropdown view
+    # Create the dropdown view
     print("🎯 Creating dropdown view...")
     view = LeaderboardView()
     
