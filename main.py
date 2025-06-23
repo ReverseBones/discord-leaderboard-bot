@@ -62,10 +62,9 @@ Format explanation:
 
 LEADERBOARDS = {
     "general": {
-        "name": "🏆 General Leaderboard",
+        "name": "General Leaderboard",
         "table": "Leaderboard", 
         "join_users": True,      # General leaderboard needs Users table for nicknames
-        "emoji": "🏆"
     },
     "3ull": {
         "name": "🎯 3ull Tournament",
