@@ -1,0 +1,410 @@
+"""
+DISCORD LEADERBOARD BOT
+=======================
+This bot connects to your SiteGround MySQL database and displays 
+game leaderboards in Discord using a dropdown menu system.
+
+Created for: ofthebones.xyz leaderboards
+"""
+
+import discord
+from discord.ext import commands
+import mysql.connector
+import os
+from typing import List, Dict, Any
+import asyncio
+
+# ============================================================================
+# BOT CONFIGURATION
+# ============================================================================
+
+# Bot settings - these control how the bot behaves
+BOT_PREFIX = "!"  # Commands start with ! (like !leaderboards)
+BOT_DESCRIPTION = "Game Leaderboard Bot - Shows top players from database"
+
+# Database configuration - this tells the bot how to connect to your MySQL
+DATABASE_CONFIG = {
+    'host': 'gtxm1069.siteground.biz',      # Your SiteGround database server
+    'database': 'dbdty6inyb4gbs',           # Your database name
+    'user': 'ucghqjnsgrb03',                # Your database username
+    'password': os.getenv('DB_PASSWORD'),    # Password from environment variable (secure!)
+    'charset': 'utf8mb4',                   # Character encoding for emojis/special chars
+    'autocommit': True                      # Automatically save database queries
+}
+
+# ============================================================================
+# LEADERBOARD DEFINITIONS
+# ============================================================================
+
+"""
+This dictionary defines all your leaderboards. To add new ones, just add 
+a new entry here! The bot will automatically include it in the dropdown.
+
+Format explanation:
+- Key: Short name used internally (like "general", "dragon")
+- name: Display name shown in Discord
+- table: Database table name
+- join_users: Whether to get username from Users table (True) or use existing username (False)
+"""
+
+LEADERBOARDS = {
+    "general": {
+        "name": "🏆 General Leaderboard",
+        "table": "Leaderboard", 
+        "join_users": True,      # General leaderboard needs Users table for nicknames
+        "emoji": "🏆"
+    },
+    "3ull": {
+        "name": "🎯 3ull Tournament",
+        "table": "3ull_tournament_leaderboard",
+        "join_users": False,     # Tournament tables already have username
+        "emoji": "🎯"
+    },
+    "dragon": {
+        "name": "🐉 Dragon Tournament", 
+        "table": "leaderboard_dragon",
+        "join_users": False,
+        "emoji": "🐉"
+    },
+    "gingerbread": {
+        "name": "🍪 Gingerbread Tournament",
+        "table": "leaderboard_gingerbread", 
+        "join_users": False,
+        "emoji": "🍪"
+    },
+    "promo": {
+        "name": "🎁 Promo Tournament",
+        "table": "leaderboard_promo",
+        "join_users": False, 
+        "emoji": "🎁"
+    },
+    "squeak": {
+        "name": "🐭 Squeak Tournament",
+        "table": "leaderboard_squeak",
+        "join_users": False,
+        "emoji": "🐭"
+    }
+}
+
+# ============================================================================
+# BOT SETUP
+# ============================================================================
+
+"""
+Create the bot instance with specific settings:
+- intents: Permissions the bot needs (reading messages, etc.)
+- command_prefix: What symbol triggers commands (!)
+- description: Bot description for help commands
+"""
+
+# Set up bot permissions (intents)
+intents = discord.Intents.default()
+intents.message_content = True  # Allow bot to read message content
+
+# Create the bot
+bot = commands.Bot(
+    command_prefix=BOT_PREFIX,
+    description=BOT_DESCRIPTION, 
+    intents=intents
+)
+
+# ============================================================================
+# DATABASE CONNECTION FUNCTIONS
+# ============================================================================
+
+async def get_database_connection():
+    """
+    Creates a connection to the MySQL database.
+    This function handles errors gracefully so the bot doesn't crash.
+    
+    Returns:
+        mysql.connector connection object or None if failed
+    """
+    try:
+        connection = mysql.connector.connect(**DATABASE_CONFIG)
+        return connection
+    except mysql.connector.Error as error:
+        print(f"❌ Database connection failed: {error}")
+        return None
+
+async def fetch_leaderboard_data(leaderboard_key: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Fetches leaderboard data from the database.
+    
+    Args:
+        leaderboard_key: Which leaderboard to fetch (like "general", "dragon")
+        limit: How many top players to get (default 10)
+    
+    Returns:
+        List of player dictionaries with nickname, kills, levels_reached
+    """
+    
+    # Get leaderboard configuration
+    config = LEADERBOARDS.get(leaderboard_key)
+    if not config:
+        return []
+    
+    # Connect to database
+    connection = await get_database_connection()
+    if not connection:
+        return []
+    
+    try:
+        cursor = connection.cursor(dictionary=True)  # Return results as dictionaries
+        
+        if config["join_users"]:
+            # For general leaderboard - need to join with Users table to get nicknames
+            query = """
+                SELECT u.nickname, l.kills, l.levels_reached
+                FROM {} l
+                JOIN Users u ON l.user_id = u.user_id  
+                ORDER BY l.levels_reached DESC, l.kills DESC
+                LIMIT %s
+            """.format(config["table"])
+        else:
+            # For tournament leaderboards - username is already in the table
+            query = """
+                SELECT username as nickname, kills, levels_reached
+                FROM {}
+                ORDER BY levels_reached DESC, kills DESC  
+                LIMIT %s
+            """.format(config["table"])
+        
+        cursor.execute(query, (limit,))
+        results = cursor.fetchall()
+        
+        return results
+        
+    except mysql.connector.Error as error:
+        print(f"❌ Database query failed: {error}")
+        return []
+    finally:
+        # Always close the connection to prevent memory leaks
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+
+# ============================================================================
+# DISCORD EMBED CREATION
+# ============================================================================
+
+def create_leaderboard_embed(leaderboard_key: str, data: List[Dict[str, Any]]) -> discord.Embed:
+    """
+    Creates a beautiful Discord embed (fancy message) showing leaderboard data.
+    
+    Args:
+        leaderboard_key: Which leaderboard this is for
+        data: List of player data from database
+        
+    Returns:
+        Discord embed object ready to send
+    """
+    
+    config = LEADERBOARDS[leaderboard_key]
+    
+    # Create the embed with title and color
+    embed = discord.Embed(
+        title=f"{config['name']} - Top {len(data)}",
+        description="🌊 Waves = Levels Reached | ⚔️ Kills = Enemies Destroyed",
+        color=0x00ff00  # Green color (you can change this!)
+    )
+    
+    # Add footer with timestamp
+    embed.set_footer(text="🎮 Of The Bones Leaderboard", 
+                    icon_url="https://ofthebones.xyz/favicon.ico")  # You can change this icon
+    
+    if not data:
+        embed.add_field(name="No Data", value="No players found in this leaderboard.", inline=False)
+        return embed
+    
+    # Create the leaderboard text
+    leaderboard_text = ""
+    
+    for i, player in enumerate(data, 1):
+        # Rank emojis for top 3
+        if i == 1:
+            rank_emoji = "🥇"
+        elif i == 2:
+            rank_emoji = "🥈" 
+        elif i == 3:
+            rank_emoji = "🥉"
+        else:
+            rank_emoji = f"{i}."
+        
+        # Format numbers with commas (1,234 instead of 1234)
+        kills_formatted = f"{player['kills']:,}"
+        
+        # Add player to leaderboard text
+        leaderboard_text += f"{rank_emoji} **{player['nickname']}**\n"
+        leaderboard_text += f"   🌊 {player['levels_reached']} waves | ⚔️ {kills_formatted} kills\n\n"
+    
+    # Add the leaderboard to embed
+    embed.add_field(name="Rankings", value=leaderboard_text, inline=False)
+    
+    return embed
+
+# ============================================================================
+# DROPDOWN MENU CLASS
+# ============================================================================
+
+class LeaderboardDropdown(discord.ui.Select):
+    """
+    This creates the dropdown menu that users can interact with.
+    When they select an option, it shows that leaderboard.
+    """
+    
+    def __init__(self):
+        # Create options for each leaderboard
+        options = []
+        for key, config in LEADERBOARDS.items():
+            options.append(
+                discord.SelectOption(
+                    label=config["name"].replace(config["emoji"], "").strip(),  # Remove emoji from label
+                    description=f"View the top 10 players",
+                    emoji=config["emoji"],
+                    value=key
+                )
+            )
+        
+        super().__init__(
+            placeholder="Choose a leaderboard to view...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        """
+        This function runs when someone selects an option from the dropdown.
+        It fetches the data and shows the leaderboard.
+        """
+        
+        # Show "thinking" message while we fetch data
+        await interaction.response.defer()
+        
+        # Get the selected leaderboard
+        selected_leaderboard = self.values[0]
+        
+        # Fetch data from database
+        data = await fetch_leaderboard_data(selected_leaderboard)
+        
+        # Create embed with the data
+        embed = create_leaderboard_embed(selected_leaderboard, data)
+        
+        # Send the leaderboard
+        await interaction.followup.send(embed=embed, ephemeral=False)
+
+class LeaderboardView(discord.ui.View):
+    """
+    This class holds the dropdown menu and handles timeouts.
+    """
+    
+    def __init__(self):
+        super().__init__(timeout=300)  # Menu expires after 5 minutes
+        self.add_item(LeaderboardDropdown())
+    
+    async def on_timeout(self):
+        """Called when the menu expires"""
+        # Disable all components when timeout occurs
+        for item in self.children:
+            item.disabled = True
+
+# ============================================================================
+# BOT COMMANDS
+# ============================================================================
+
+@bot.command(name='leaderboards', aliases=['lb', 'leaderboard'])
+async def leaderboards_command(ctx):
+    """
+    Main command that users type: !leaderboards
+    This shows the dropdown menu to select which leaderboard to view.
+    
+    Args:
+        ctx: Discord context (contains info about who sent the command, where, etc.)
+    """
+    
+    # Create embed for the main menu
+    embed = discord.Embed(
+        title="🏆 Game Leaderboards",
+        description="Select a leaderboard from the dropdown menu below to view the top 10 players!",
+        color=0x0099ff  # Blue color
+    )
+    
+    embed.add_field(
+        name="Available Leaderboards", 
+        value="\n".join([f"{config['emoji']} {config['name']}" for config in LEADERBOARDS.values()]),
+        inline=False
+    )
+    
+    embed.set_footer(text="🎮 Of The Bones | Menu expires in 5 minutes")
+    
+    # Create the dropdown view
+    view = LeaderboardView()
+    
+    # Send the message with dropdown
+    await ctx.send(embed=embed, view=view)
+
+# ============================================================================
+# BOT EVENTS
+# ============================================================================
+
+@bot.event
+async def on_ready():
+    """
+    This runs when the bot successfully connects to Discord.
+    It's like the bot saying "I'm online and ready!"
+    """
+    print(f'✅ Bot is ready!')
+    print(f'📊 Logged in as: {bot.user.name}')
+    print(f'🆔 Bot ID: {bot.user.id}')
+    print(f'🎯 Loaded {len(LEADERBOARDS)} leaderboards')
+    print('🚀 Bot is now online and ready to serve leaderboards!')
+    
+    # Test database connection on startup
+    connection = await get_database_connection()
+    if connection:
+        print('✅ Database connection successful!')
+        connection.close()
+    else:
+        print('❌ Database connection failed!')
+
+@bot.event
+async def on_command_error(ctx, error):
+    """
+    This handles errors gracefully so users get helpful messages
+    instead of the bot just breaking.
+    """
+    if isinstance(error, commands.CommandNotFound):
+        # Don't respond to invalid commands to avoid spam
+        return
+    else:
+        # Log other errors
+        print(f"❌ Command error: {error}")
+        await ctx.send("❌ Something went wrong! Please try again later.")
+
+# ============================================================================
+# RUN THE BOT
+# ============================================================================
+
+if __name__ == "__main__":
+    """
+    This is where the bot actually starts running.
+    It gets the bot token from environment variables for security.
+    """
+    
+    # Get bot token from environment variable
+    bot_token = os.getenv('DISCORD_BOT_TOKEN')
+    
+    if not bot_token:
+        print("❌ Error: DISCORD_BOT_TOKEN environment variable not set!")
+        print("Please set your Discord bot token in the environment variables.")
+        exit(1)
+    
+    if not os.getenv('DB_PASSWORD'):
+        print("❌ Error: DB_PASSWORD environment variable not set!")
+        print("Please set your database password in the environment variables.")
+        exit(1)
+    
+    # Start the bot
+    print("🚀 Starting Discord Leaderboard Bot...")
+    bot.run(bot_token)
