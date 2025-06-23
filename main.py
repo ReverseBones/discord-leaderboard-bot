@@ -185,16 +185,15 @@ def create_leaderboard_embed(leaderboard_key: str, data: List[Dict[str, Any]]) -
     
     # Create the embed with black color and clean title
     embed = discord.Embed(
-        title=f"{config['name']}",  # Only emoji in heading
+        title=f"{config['name']}",
         color=0x000000  # Black color
     )
-    # No description - clean look
     
     # Clean footer
     embed.set_footer(text="Graveyard Antics TD Leaderboards")
     
     if not data:
-        embed.add_field(name="No Data", value="No players found in this leaderboard.", inline=False)
+        embed.description = "No players found in this leaderboard."
         return embed
     
     # Create clean numbered leaderboard
@@ -207,8 +206,8 @@ def create_leaderboard_embed(leaderboard_key: str, data: List[Dict[str, Any]]) -
         # Clean format: number, name, stats
         leaderboard_text += f"{i}. **{player['nickname']}** - {player['levels_reached']} waves survived, {kills_formatted} enemies destroyed\n"
     
-    # Add the leaderboard to embed
-    embed.add_field(value=leaderboard_text, inline=False)
+    # Use description instead of add_field to avoid subtitle
+    embed.description = leaderboard_text
     
     return embed
 
