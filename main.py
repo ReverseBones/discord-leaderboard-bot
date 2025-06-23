@@ -196,7 +196,7 @@ def create_leaderboard_embed(leaderboard_key: str, data: List[Dict[str, Any]]) -
     )
     
     # Clean footer
-    embed.set_footer(text="Graveyard Antics TD Leaderboards")
+    embed.set_footer(text="Graveyard Antics TD")
     
     if not data:
         embed.description = "No players found in this leaderboard."
