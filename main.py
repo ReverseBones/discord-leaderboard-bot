@@ -185,13 +185,13 @@ def create_leaderboard_embed(leaderboard_key: str, data: List[Dict[str, Any]]) -
     
     # Create the embed with black color and clean title
     embed = discord.Embed(
-        title=f"🏆 {config['name']} - Top {len(data)}",  # Only emoji in heading
+        title=f"{config['name']} - Top {len(data)}",  # Only emoji in heading
         color=0x000000  # Black color
     )
     # No description - clean look
     
     # Clean footer
-    embed.set_footer(text="Of The Bones Leaderboard")
+    embed.set_footer(text="Graveyard Antics TD Leaderboards")
     
     if not data:
         embed.add_field(name="No Data", value="No players found in this leaderboard.", inline=False)
@@ -205,7 +205,7 @@ def create_leaderboard_embed(leaderboard_key: str, data: List[Dict[str, Any]]) -
         kills_formatted = f"{player['kills']:,}"
         
         # Clean format: number, name, stats
-        leaderboard_text += f"{i}. **{player['nickname']}** - {player['levels_reached']} waves, {kills_formatted} kills\n"
+        leaderboard_text += f"{i}. **{player['nickname']}** - {player['levels_reached']} waves survived, {kills_formatted} enemies destroyed\n"
     
     # Add the leaderboard to embed
     embed.add_field(name="Rankings", value=leaderboard_text, inline=False)
@@ -293,7 +293,7 @@ async def leaderboards_command(ctx):
     
     # Create embed for the main menu
     embed = discord.Embed(
-        title="🏆 Game Leaderboards",
+        title="🏆 Game Leaderboards 🏆",
         description="Select a leaderboard from the dropdown menu below to view the top 10 players!",
         color=0x000000  # Black color to match
     )
@@ -304,7 +304,7 @@ async def leaderboards_command(ctx):
         inline=False
     )
     
-    embed.set_footer(text="Of The Bones | Menu expires in 5 minutes")
+    embed.set_footer(text="Graveyard Antics TD | Menu expires in 5 minutes")
     
     # Create the dropdown view
     view = LeaderboardView()
