@@ -116,8 +116,6 @@ async def get_database_connection():
         return None
 
 async def fetch_leaderboard_data(leaderboard_key: str, limit: int = 10) -> List[Dict[str, Any]]:
-
-async def fetch_leaderboard_data(leaderboard_key: str, limit: int = 10) -> List[Dict[str, Any]]:
     """
     Fetches leaderboard data from the database.
     """
@@ -248,27 +246,27 @@ class LeaderboardDropdown(discord.ui.Select):
         )
     
     async def callback(self, interaction: discord.Interaction):
-    """
-    This function runs when someone selects an option from the dropdown.
-    It fetches the data and shows the leaderboard.
-    """
-    print(f"🔄 Dropdown callback triggered for: {self.values[0]}")
-    
-    # Show "thinking" message while we fetch data
-    await interaction.response.defer()
-    
-    # Get the selected leaderboard
-    selected_leaderboard = self.values[0]
-    
-    # Fetch data from database
-    data = await fetch_leaderboard_data(selected_leaderboard)
-    
-    # Create embed with the data
-    embed = create_leaderboard_embed(selected_leaderboard, data)
-    
-    # Send the leaderboard
-    await interaction.followup.send(embed=embed, ephemeral=False)
-    print(f"✅ Sent leaderboard for: {selected_leaderboard}")
+        """
+        This function runs when someone selects an option from the dropdown.
+        It fetches the data and shows the leaderboard.
+        """
+        print(f"🔄 Dropdown callback triggered for: {self.values[0]}")
+        
+        # Show "thinking" message while we fetch data
+        await interaction.response.defer()
+        
+        # Get the selected leaderboard
+        selected_leaderboard = self.values[0]
+        
+        # Fetch data from database
+        data = await fetch_leaderboard_data(selected_leaderboard)
+        
+        # Create embed with the data
+        embed = create_leaderboard_embed(selected_leaderboard, data)
+        
+        # Send the leaderboard
+        await interaction.followup.send(embed=embed, ephemeral=False)
+        print(f"✅ Sent leaderboard for: {selected_leaderboard}")
 
 class LeaderboardView(discord.ui.View):
     """
@@ -344,21 +342,22 @@ async def on_ready():
     else:
         print('❌ Database connection failed!')
 
-@bot.event
-async def on_command_error(ctx, error):
-    """
-    This handles errors gracefully so users get helpful messages
-    instead of the bot just breaking.
-    """
-    if isinstance(error, commands.CommandNotFound):
-        # Don't respond to invalid commands to avoid spam
-        return
-    else:
-        # Log other errors with more detail
-        print(f"❌ Command error in {ctx.command}: {error}")
-        print(f"❌ Error type: {type(error)}")
-        print(f"❌ Full error: {str(error)}")
-        await ctx.send("❌ Something went wrong! Please try again later.")
+# Temporarily disabled error handler to debug double embeds
+# @bot.event
+# async def on_command_error(ctx, error):
+#     """
+#     This handles errors gracefully so users get helpful messages
+#     instead of the bot just breaking.
+#     """
+#     if isinstance(error, commands.CommandNotFound):
+#         # Don't respond to invalid commands to avoid spam
+#         return
+#     else:
+#         # Log other errors with more detail
+#         print(f"❌ Command error in {ctx.command}: {error}")
+#         print(f"❌ Error type: {type(error)}")
+#         print(f"❌ Full error: {str(error)}")
+#         await ctx.send("❌ Something went wrong! Please try again later.")
 
 # ============================================================================
 # RUN THE BOT
