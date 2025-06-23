@@ -251,22 +251,42 @@ class LeaderboardDropdown(discord.ui.Select):
         It fetches the data and shows the leaderboard.
         """
         print(f"🔄 Dropdown callback triggered for: {self.values[0]}")
+        print(f"🔄 Interaction ID: {interaction.id}")
+        print(f"🔄 User: {interaction.user}")
+    
+        try:
+            # Show "thinking" message while we fetch data
+            print("🔄 About to defer interaction...")
+            await interaction.response.defer()
+            print("✅ Interaction deferred successfully")
         
-        # Show "thinking" message while we fetch data
-        await interaction.response.defer()
+            # Get the selected leaderboard
+            selected_leaderboard = self.values[0]
+            print(f"🔄 Processing leaderboard: {selected_leaderboard}")
         
-        # Get the selected leaderboard
-        selected_leaderboard = self.values[0]
+            # Fetch data from database
+            data = await fetch_leaderboard_data(selected_leaderboard)
+            print(f"🔄 Got {len(data)} records from database")
         
-        # Fetch data from database
-        data = await fetch_leaderboard_data(selected_leaderboard)
+            # Create embed with the data
+            embed = create_leaderboard_embed(selected_leaderboard, data)
+            print("🔄 Created embed")
         
-        # Create embed with the data
-        embed = create_leaderboard_embed(selected_leaderboard, data)
+            # Send the leaderboard
+            print("🔄 About to send followup...")
+            await interaction.followup.send(embed=embed, ephemeral=False)
+            print(f"✅ Sent leaderboard for: {selected_leaderboard}")
         
-        # Send the leaderboard
-        await interaction.followup.send(embed=embed, ephemeral=False)
-        print(f"✅ Sent leaderboard for: {selected_leaderboard}")
+        except Exception as e:
+            print(f"❌ Error in callback: {e}")
+            print(f"❌ Error type: {type(e)}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("❌ Something went wrong!", ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ Something went wrong!", ephemeral=True)
+            except:
+                print("❌ Could not send error message")
 
 class LeaderboardView(discord.ui.View):
     """
