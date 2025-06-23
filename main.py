@@ -15,7 +15,6 @@ from typing import List, Dict, Any
 import asyncio
 from threading import Thread
 from flask import Flask
-import os
 
 # ============================================================================
 # BOT CONFIGURATION
@@ -49,27 +48,16 @@ DATABASE_CONFIG = {
 # LEADERBOARD DEFINITIONS
 # ============================================================================
 
-"""
-This dictionary defines all your leaderboards. To add new ones, just add 
-a new entry here! The bot will automatically include it in the dropdown.
-
-Format explanation:
-- Key: Short name used internally (like "general", "dragon")
-- name: Display name shown in Discord
-- table: Database table name
-- join_users: Whether to get username from Users table (True) or use existing username (False)
-"""
-
 LEADERBOARDS = {
     "general": {
         "name": "General Leaderboard",
         "table": "Leaderboard", 
-        "join_users": True,      # General leaderboard needs Users table for nicknames
+        "join_users": True,
     },
     "3ull": {
         "name": "Playa3ull",
         "table": "3ull_tournament_leaderboard",
-        "join_users": False,     # Tournament tables already have username
+        "join_users": False,
     },
     "dragon": {
         "name": "Ancient Dragon Alliance", 
@@ -96,13 +84,6 @@ LEADERBOARDS = {
 # ============================================================================
 # BOT SETUP
 # ============================================================================
-
-"""
-Create the bot instance with specific settings:
-- intents: Permissions the bot needs (reading messages, etc.)
-- command_prefix: What symbol triggers commands (!)
-- description: Bot description for help commands
-"""
 
 # Set up bot permissions (intents)
 intents = discord.Intents.default()
@@ -247,9 +228,8 @@ class LeaderboardDropdown(discord.ui.Select):
         for key, config in LEADERBOARDS.items():
             options.append(
                 discord.SelectOption(
-                    label=config["name"].replace(config["emoji"], "").strip(),  # Remove emoji from label
+                    label=config["name"],  # Clean label without emoji processing
                     description=f"View the top 10 players",
-                    emoji=config["emoji"],
                     value=key
                 )
             )
@@ -315,16 +295,16 @@ async def leaderboards_command(ctx):
     embed = discord.Embed(
         title="🏆 Game Leaderboards",
         description="Select a leaderboard from the dropdown menu below to view the top 10 players!",
-        color=0x0099ff  # Blue color
+        color=0x000000  # Black color to match
     )
     
     embed.add_field(
         name="Available Leaderboards", 
-        value="\n".join([f"{config['emoji']} {config['name']}" for config in LEADERBOARDS.values()]),
+        value="\n".join([config['name'] for config in LEADERBOARDS.values()]),  # No emojis
         inline=False
     )
     
-    embed.set_footer(text="🎮 Of The Bones | Menu expires in 5 minutes")
+    embed.set_footer(text="Of The Bones | Menu expires in 5 minutes")
     
     # Create the dropdown view
     view = LeaderboardView()
