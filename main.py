@@ -67,34 +67,29 @@ LEADERBOARDS = {
         "join_users": True,      # General leaderboard needs Users table for nicknames
     },
     "3ull": {
-        "name": "🎯 3ull Tournament",
+        "name": "Playa3ull",
         "table": "3ull_tournament_leaderboard",
         "join_users": False,     # Tournament tables already have username
-        "emoji": "🎯"
     },
     "dragon": {
-        "name": "🐉 Dragon Tournament", 
+        "name": "Ancient Dragon Alliance", 
         "table": "leaderboard_dragon",
         "join_users": False,
-        "emoji": "🐉"
     },
     "gingerbread": {
-        "name": "🍪 Gingerbread Tournament",
+        "name": "Gingerbread Squad",
         "table": "leaderboard_gingerbread", 
         "join_users": False,
-        "emoji": "🍪"
     },
     "promo": {
-        "name": "🎁 Promo Tournament",
+        "name": "Promo Facie",
         "table": "leaderboard_promo",
         "join_users": False, 
-        "emoji": "🎁"
     },
     "squeak": {
-        "name": "🐭 Squeak Tournament",
+        "name": "World of Squeak",
         "table": "leaderboard_squeak",
         "join_users": False,
-        "emoji": "🐭"
     }
 }
 
@@ -202,53 +197,34 @@ async def fetch_leaderboard_data(leaderboard_key: str, limit: int = 10) -> List[
 
 def create_leaderboard_embed(leaderboard_key: str, data: List[Dict[str, Any]]) -> discord.Embed:
     """
-    Creates a beautiful Discord embed (fancy message) showing leaderboard data.
-    
-    Args:
-        leaderboard_key: Which leaderboard this is for
-        data: List of player data from database
-        
-    Returns:
-        Discord embed object ready to send
+    Creates a clean Discord embed showing leaderboard data.
     """
     
     config = LEADERBOARDS[leaderboard_key]
     
-    # Create the embed with title and color
+    # Create the embed with black color and clean title
     embed = discord.Embed(
-        title=f"{config['name']} - Top {len(data)}",
-        description="🌊 Waves = Levels Reached | ⚔️ Kills = Enemies Destroyed",
-        color=0x00ff00  # Green color (you can change this!)
+        title=f"🏆 {config['name']} - Top {len(data)}",  # Only emoji in heading
+        color=0x000000  # Black color
     )
+    # No description - clean look
     
-    # Add footer with timestamp
-    embed.set_footer(text="🎮 Of The Bones Leaderboard", 
-                    icon_url="https://ofthebones.xyz/favicon.ico")  # You can change this icon
+    # Clean footer
+    embed.set_footer(text="Of The Bones Leaderboard")
     
     if not data:
         embed.add_field(name="No Data", value="No players found in this leaderboard.", inline=False)
         return embed
     
-    # Create the leaderboard text
+    # Create clean numbered leaderboard
     leaderboard_text = ""
     
     for i, player in enumerate(data, 1):
-        # Rank emojis for top 3
-        if i == 1:
-            rank_emoji = "🥇"
-        elif i == 2:
-            rank_emoji = "🥈" 
-        elif i == 3:
-            rank_emoji = "🥉"
-        else:
-            rank_emoji = f"{i}."
-        
-        # Format numbers with commas (1,234 instead of 1234)
+        # Simple numbering - no medal emojis
         kills_formatted = f"{player['kills']:,}"
         
-        # Add player to leaderboard text
-        leaderboard_text += f"{rank_emoji} **{player['nickname']}**\n"
-        leaderboard_text += f"   🌊 {player['levels_reached']} waves | ⚔️ {kills_formatted} kills\n\n"
+        # Clean format: number, name, stats
+        leaderboard_text += f"{i}. **{player['nickname']}** - {player['levels_reached']} waves, {kills_formatted} kills\n"
     
     # Add the leaderboard to embed
     embed.add_field(name="Rankings", value=leaderboard_text, inline=False)
