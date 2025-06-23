@@ -13,10 +13,23 @@ import mysql.connector
 import os
 from typing import List, Dict, Any
 import asyncio
+from threading import Thread
+from flask import Flask
+import os
 
 # ============================================================================
 # BOT CONFIGURATION
 # ============================================================================
+
+# Simple web server for Render health checks
+app = Flask(__name__)
+
+@app.route('/')
+def health():
+    return "Bot is running!"
+
+def run_web():
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
 
 # Bot settings - these control how the bot behaves
 BOT_PREFIX = "!"  # Commands start with ! (like !leaderboards)
@@ -386,6 +399,7 @@ async def on_command_error(ctx, error):
 # RUN THE BOT
 # ============================================================================
 
+Thread(target=run_web, daemon=True).start()
 if __name__ == "__main__":
     """
     This is where the bot actually starts running.
