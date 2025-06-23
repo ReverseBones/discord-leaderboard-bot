@@ -208,7 +208,7 @@ def create_leaderboard_embed(leaderboard_key: str, data: List[Dict[str, Any]]) -
         leaderboard_text += f"{i}. **{player['nickname']}** - {player['levels_reached']} waves survived, {kills_formatted} enemies destroyed\n"
     
     # Add the leaderboard to embed
-    embed.add_field(name="Rankings", value=leaderboard_text, inline=False)
+    embed.add_field(value=leaderboard_text, inline=False)
     
     return embed
 
