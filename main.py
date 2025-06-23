@@ -229,7 +229,6 @@ class LeaderboardDropdown(discord.ui.Select):
             options.append(
                 discord.SelectOption(
                     label=config["name"],  # Clean label without emoji processing
-                    description=f"View the top 10 players",
                     value=key
                 )
             )
@@ -294,7 +293,7 @@ async def leaderboards_command(ctx):
     # Create embed for the main menu
     embed = discord.Embed(
         title="🏆 Game Leaderboards 🏆",
-        description="Select a leaderboard from the dropdown menu below to view the top 10 players!",
+        description="Select a leaderboard from the dropdown menu below to view the top 10 players & scores for that leaderboard",
         color=0x000000  # Black color to match
     )
     
