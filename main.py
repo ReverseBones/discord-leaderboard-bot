@@ -185,7 +185,7 @@ def create_leaderboard_embed(leaderboard_key: str, data: List[Dict[str, Any]]) -
     
     # Create the embed with black color and clean title
     embed = discord.Embed(
-        title=f"{config['name']} - Top {len(data)}",  # Only emoji in heading
+        title=f"{config['name']}",  # Only emoji in heading
         color=0x000000  # Black color
     )
     # No description - clean look
