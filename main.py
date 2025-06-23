@@ -294,8 +294,11 @@ class LeaderboardView(discord.ui.View):
     """
     
     def __init__(self):
-        super().__init__(timeout=300)  # Menu expires after 5 minutes
+        print("🔧 Creating LeaderboardView...")
+        super().__init__(timeout=300)  # Menu expires in 5 minutes
+        print("🔧 Adding dropdown to view...")
         self.add_item(LeaderboardDropdown())
+        print("✅ LeaderboardView created successfully")
     
     async def on_timeout(self):
         """Called when the menu expires"""
@@ -316,6 +319,7 @@ async def leaderboards_command(ctx):
     Args:
         ctx: Discord context (contains info about who sent the command, where, etc.)
     """
+    print(f"🎯 !leaderboards command triggered by {ctx.author}")
     
     # Create embed for the main menu
     embed = discord.Embed(
@@ -332,11 +336,14 @@ async def leaderboards_command(ctx):
     
     embed.set_footer(text="Graveyard Antics TD | Menu expires in 5 minutes")
     
-    # Create the dropdown view
+        # Create the dropdown view
+    print("🎯 Creating dropdown view...")
     view = LeaderboardView()
     
     # Send the message with dropdown
+    print("🎯 Sending message with dropdown...")
     await ctx.send(embed=embed, view=view)
+    print("✅ Message sent successfully")
 
 # ============================================================================
 # BOT EVENTS
