@@ -31,7 +31,7 @@ def run_web():
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
 
 # Bot settings - these control how the bot behaves
-BOT_PREFIX = "!"  # Commands start with ! (like !leaderboards)
+BOT_PREFIX = "!"  # Commands start with ! (like !graveyard)
 BOT_DESCRIPTION = "Game Leaderboard Bot - Shows top players from database"
 
 # Database configuration - this tells the bot how to connect to your MySQL
@@ -310,20 +310,20 @@ class LeaderboardView(discord.ui.View):
 # BOT COMMANDS
 # ============================================================================
 
-@bot.command(name='leaderboards', aliases=['lb', 'leaderboard'])
+@bot.command(name='graveyard', aliases=['gy'])
 async def leaderboards_command(ctx):
     """
-    Main command that users type: !leaderboards
+    Main command that users type: !graveyard
     This shows the dropdown menu to select which leaderboard to view.
     
     Args:
         ctx: Discord context (contains info about who sent the command, where, etc.)
     """
-    print(f"🎯 !leaderboards command triggered by {ctx.author}")
+    print(f"🎯 !graveyard command triggered by {ctx.author}")
     
     # Create embed for the main menu
     embed = discord.Embed(
-        title="🏆 Game Leaderboards 🏆",
+        title="🏆 Graveyard Antics TD Leaderboards 🏆",
         description="Select a leaderboard from the dropdown menu below to view the top 10 players & scores for that leaderboard",
         color=0x000000  # Black color to match
     )
