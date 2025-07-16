@@ -82,6 +82,11 @@ LEADERBOARDS = {
         "name": "World of Squeak",
         "table": "leaderboard_squeak",
         "join_users": False,
+    },
+    "algo apes": {
+        "name": "Algo Apes",
+        "table": "algoapes_tournament_leaderboard",
+        "join_users": False,
     }
 }
 
