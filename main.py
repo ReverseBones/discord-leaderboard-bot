@@ -87,6 +87,16 @@ LEADERBOARDS = {
         "name": "Algo Apes",
         "table": "algoapes_tournament_leaderboard",
         "join_users": False,
+    },
+    "CSB": {
+        "name": "Stake Bulls",
+        "table": "leaderboard_csb",
+        "join_users": False,
+    },
+    "ARC": {
+        "name": "Aping Riot",
+        "table": "leaderboard_arc",
+        "join_users": False,
     }
 }
 
