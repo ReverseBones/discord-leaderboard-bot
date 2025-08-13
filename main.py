@@ -7,6 +7,8 @@ game leaderboards in Discord using a dropdown menu system.
 Created for: ofthebones.xyz leaderboards
 """
 
+import traceback
+from mysql.connector import pooling
 import discord
 from discord.ext import commands
 import mysql.connector
@@ -47,6 +49,75 @@ DATABASE_CONFIG = {
     'charset': 'utf8mb4',                   # Character encoding for emojis/special chars
     'autocommit': True                      # Automatically save database queries
 }
+
+DATABASE_CONFIG_WITH_TIMEOUT = {
+    **DATABASE_CONFIG,
+    'connection_timeout': 6
+}
+
+pool = pooling.MySQLConnectionPool(
+    pool_name="gy_pool",
+    pool_size=5,
+    pool_reset_session=True,
+    **DATABASE_CONFIG_WITH_TIMEOUT
+)
+
+def fetch_leaderboard_data_sync(leaderboard_key: str, limit: int):
+    config = LEADERBOARDS.get(leaderboard_key)
+    if not config:
+        print(f"❌ No config found for key: {leaderboard_key}")
+        return []
+
+    try:
+        connection = pool.get_connection()
+    except mysql.connector.Error as error:
+        print(f"❌ Pool connection failed: {error}")
+        return []
+
+    try:
+        cursor = connection.cursor(dictionary=True)
+
+        if config["join_users"]:
+            query = f"""
+                SELECT u.nickname, l.kills, l.levels_reached
+                FROM {config["table"]} l
+                JOIN Users u ON l.user_id = u.user_id
+                ORDER BY l.levels_reached DESC, l.kills DESC
+                LIMIT %s
+            """
+        else:
+            if leaderboard_key == "3ull":
+                query = f"""
+                    SELECT user_id as nickname, kills, levels_reached
+                    FROM {config["table"]}
+                    ORDER BY levels_reached DESC, kills DESC
+                    LIMIT %s
+                """
+            else:
+                query = f"""
+                    SELECT username as nickname, kills, levels_reached
+                    FROM {config["table"]}
+                    ORDER BY levels_reached DESC, kills DESC
+                    LIMIT %s
+                """
+
+        cursor.execute(query, (int(limit),))
+        results = cursor.fetchall()
+        return results
+
+    except mysql.connector.Error as error:
+        print(f"❌ Database query failed for {leaderboard_key}: {error}")
+        return []
+    except Exception:
+        print("❌ Unexpected error in fetch_leaderboard_data_sync:")
+        print("".join(traceback.format_exc()))
+        return []
+    finally:
+        try:
+            cursor.close()
+            connection.close()
+        except Exception:
+            pass
 
 # ============================================================================
 # LEADERBOARD DEFINITIONS
@@ -143,64 +214,8 @@ async def fetch_leaderboard_data(leaderboard_key: str, limit: int = 10) -> List[
     """
     Fetches leaderboard data from the database.
     """
-    
-    # Get leaderboard configuration
-    config = LEADERBOARDS.get(leaderboard_key)
-    if not config:
-        print(f"❌ No config found for key: {leaderboard_key}")
-        return []
-    
-    # Connect to database
-    connection = await get_database_connection()
-    if not connection:
-        print(f"❌ Database connection failed for {leaderboard_key}")
-        return []
-    
-    try:
-        cursor = connection.cursor(dictionary=True)
-        
-        if config["join_users"]:
-            # For general leaderboard - need to join with Users table to get nicknames
-            query = """
-                SELECT u.nickname, l.kills, l.levels_reached
-                FROM {} l
-                JOIN Users u ON l.user_id = u.user_id  
-                ORDER BY l.levels_reached DESC, l.kills DESC
-                LIMIT %s
-            """.format(config["table"])
-        else:
-            # For tournament leaderboards - check table structure
-            if leaderboard_key == "3ull":
-                # 3ull table has user_id column with usernames
-                query = """
-                    SELECT user_id as nickname, kills, levels_reached
-                    FROM {}
-                    ORDER BY levels_reached DESC, kills DESC  
-                    LIMIT %s
-                """.format(config["table"])
-            else:
-                # Other tournament tables have username column
-                query = """
-                    SELECT username as nickname, kills, levels_reached
-                    FROM {}
-                    ORDER BY levels_reached DESC, kills DESC  
-                    LIMIT %s
-                """.format(config["table"])
-        
-        print(f"🔍 Executing query for {leaderboard_key}: {query}")
-        cursor.execute(query, (limit,))
-        results = cursor.fetchall()
-        print(f"📊 Found {len(results)} results for {leaderboard_key}")
-        
-        return results
-        
-    except mysql.connector.Error as error:
-        print(f"❌ Database query failed for {leaderboard_key}: {error}")
-        return []
-    finally:
-        if connection.is_connected():
-            cursor.close()
-            connection.close()
+    # Offload blocking DB work to a background thread so it never blocks Discord
+    return await asyncio.to_thread(fetch_leaderboard_data_sync, leaderboard_key, limit)
 
 # ============================================================================
 # DISCORD EMBED CREATION
@@ -263,11 +278,12 @@ class LeaderboardDropdown(discord.ui.Select):
             )
         
         super().__init__(
-            placeholder="Choose a leaderboard to view...",
-            min_values=1,
-            max_values=1,
-            options=options
-        )
+    placeholder="Choose a leaderboard to view...",
+    min_values=1,
+    max_values=1,
+    options=options,
+    custom_id="gy_leaderboard_dropdown_v1"
+)
     
     async def callback(self, interaction: discord.Interaction):
         """
@@ -281,7 +297,7 @@ class LeaderboardDropdown(discord.ui.Select):
         try:
             # Show "thinking" message while we fetch data
             print("🔄 About to defer interaction...")
-            await interaction.response.defer()
+            await interaction.response.defer(thinking=True)
             print("✅ Interaction deferred successfully")
         
             # Get the selected leaderboard
@@ -304,6 +320,7 @@ class LeaderboardDropdown(discord.ui.Select):
         except Exception as e:
             print(f"❌ Error in callback: {e}")
             print(f"❌ Error type: {type(e)}")
+            print("".join(traceback.format_exc()))
             try:
                 if not interaction.response.is_done():
                     await interaction.response.send_message("❌ Something went wrong!", ephemeral=True)
@@ -319,7 +336,7 @@ class LeaderboardView(discord.ui.View):
     
     def __init__(self):
         print("🔧 Creating LeaderboardView...")
-        super().__init__(timeout=300)  # Menu expires in 5 minutes
+        super().__init__(timeout=900)  # Menu expires in 15 minutes
         print("🔧 Adding dropdown to view...")
         self.add_item(LeaderboardDropdown())
         print("✅ LeaderboardView created successfully")
@@ -408,6 +425,13 @@ async def on_ready():
         connection.close()
     else:
         print('❌ Database connection failed!')
+
+    # Register persistent view so old dropdowns keep working after restart
+    try:
+        bot.add_view(LeaderboardView())
+        print("✅ Persistent view registered")
+    except Exception as e:
+        print(f"⚠️ Could not register persistent view: {e}")
 
 # Temporarily disabled error handler to debug double embeds
 # @bot.event
