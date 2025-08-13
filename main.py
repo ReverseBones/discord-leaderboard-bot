@@ -143,6 +143,71 @@ async def get_database_connection():
         print(f"❌ Database connection failed: {error}")
         return None
 
+def fetch_leaderboard_data_sync(leaderboard_key: str, limit: int):
+    """
+    Synchronously fetches leaderboard data from the MySQL database.
+    """
+    config = LEADERBOARDS.get(leaderboard_key)
+    if not config:
+        print(f"❌ No config found for key: {leaderboard_key}")
+        return []
+
+    try:
+        connection = mysql.connector.pooling.MySQLConnectionPool(
+            pool_name="gy_pool",
+            pool_size=5,
+            pool_reset_session=True,
+            **DATABASE_CONFIG
+        ).get_connection()
+    except mysql.connector.Error as error:
+        print(f"❌ Pool connection failed: {error}")
+        return []
+
+    try:
+        cursor = connection.cursor(dictionary=True)
+
+        if config["join_users"]:
+            query = f"""
+                SELECT u.nickname, l.kills, l.levels_reached
+                FROM {config["table"]} l
+                JOIN Users u ON l.user_id = u.user_id
+                ORDER BY l.levels_reached DESC, l.kills DESC
+                LIMIT %s
+            """
+        else:
+            if leaderboard_key == "3ull":
+                query = f"""
+                    SELECT user_id as nickname, kills, levels_reached
+                    FROM {config["table"]}
+                    ORDER BY levels_reached DESC, kills DESC
+                    LIMIT %s
+                """
+            else:
+                query = f"""
+                    SELECT username as nickname, kills, levels_reached
+                    FROM {config["table"]}
+                    ORDER BY levels_reached DESC, kills DESC
+                    LIMIT %s
+                """
+
+        cursor.execute(query, (int(limit),))
+        results = cursor.fetchall()
+        return results
+
+    except mysql.connector.Error as error:
+        print(f"❌ Database query failed for {leaderboard_key}: {error}")
+        return []
+    except Exception:
+        print("❌ Unexpected error in fetch_leaderboard_data_sync:")
+        print("".join(traceback.format_exc()))
+        return []
+    finally:
+        try:
+            cursor.close()
+            connection.close()
+        except Exception:
+            pass
+
 async def fetch_leaderboard_data(leaderboard_key: str, limit: int = 10) -> List[Dict[str, Any]]:
     """
     Fetches leaderboard data from the database with 24-hour caching.
@@ -164,64 +229,6 @@ async def fetch_leaderboard_data(leaderboard_key: str, limit: int = 10) -> List[
     leaderboard_cache[cache_key] = (data, current_time)
     print(f"🔄 Cached data for {leaderboard_key}")
     return data
-    
-    # Get leaderboard configuration
-    config = LEADERBOARDS.get(leaderboard_key)
-    if not config:
-        print(f"❌ No config found for key: {leaderboard_key}")
-        return []
-    
-    # Connect to database
-    connection = await get_database_connection()
-    if not connection:
-        print(f"❌ Database connection failed for {leaderboard_key}")
-        return []
-    
-    try:
-        cursor = connection.cursor(dictionary=True)
-        
-        if config["join_users"]:
-            # For general leaderboard - need to join with Users table to get nicknames
-            query = """
-                SELECT u.nickname, l.kills, l.levels_reached
-                FROM {} l
-                JOIN Users u ON l.user_id = u.user_id  
-                ORDER BY l.levels_reached DESC, l.kills DESC
-                LIMIT %s
-            """.format(config["table"])
-        else:
-            # For tournament leaderboards - check table structure
-            if leaderboard_key == "3ull":
-                # 3ull table has user_id column with usernames
-                query = """
-                    SELECT user_id as nickname, kills, levels_reached
-                    FROM {}
-                    ORDER BY levels_reached DESC, kills DESC  
-                    LIMIT %s
-                """.format(config["table"])
-            else:
-                # Other tournament tables have username column
-                query = """
-                    SELECT username as nickname, kills, levels_reached
-                    FROM {}
-                    ORDER BY levels_reached DESC, kills DESC  
-                    LIMIT %s
-                """.format(config["table"])
-        
-        print(f"🔍 Executing query for {leaderboard_key}: {query}")
-        cursor.execute(query, (limit,))
-        results = cursor.fetchall()
-        print(f"📊 Found {len(results)} results for {leaderboard_key}")
-        
-        return results
-        
-    except mysql.connector.Error as error:
-        print(f"❌ Database query failed for {leaderboard_key}: {error}")
-        return []
-    finally:
-        if connection.is_connected():
-            cursor.close()
-            connection.close()
 
 # ============================================================================
 # DISCORD EMBED CREATION
@@ -364,12 +371,6 @@ class LeaderboardView(discord.ui.View):
         print("🔧 Adding dropdown to view...")
         self.add_item(LeaderboardDropdown())
         print("✅ LeaderboardView created successfully")
-    
-    async def on_timeout(self):
-        """Called when the menu expires"""
-        # Disable all components when timeout occurs
-        for item in self.children:
-            item.disabled = True
 
 # ============================================================================
 # BOT COMMANDS
