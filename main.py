@@ -97,6 +97,11 @@ LEADERBOARDS = {
         "name": "Aping Riot",
         "table": "leaderboard_arc",
         "join_users": False,
+    },
+    "banker labs": {
+        "name": "Banker Labs",
+        "table": "leaderboard_bank",
+        "join_users": False,
     }
 }
 
