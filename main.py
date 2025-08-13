@@ -7,8 +7,6 @@ game leaderboards in Discord using a dropdown menu system.
 Created for: ofthebones.xyz leaderboards
 """
 
-import traceback
-from mysql.connector import pooling
 import discord
 from discord.ext import commands
 import mysql.connector
@@ -18,6 +16,10 @@ import asyncio
 from threading import Thread
 from flask import Flask
 import time
+
+# In-memory cache for leaderboard data
+leaderboard_cache = {}
+CACHE_TTL = 86400  # Cache for 24 hours (86400 seconds)
 
 # ============================================================================
 # BOT CONFIGURATION
@@ -49,75 +51,6 @@ DATABASE_CONFIG = {
     'charset': 'utf8mb4',                   # Character encoding for emojis/special chars
     'autocommit': True                      # Automatically save database queries
 }
-
-DATABASE_CONFIG_WITH_TIMEOUT = {
-    **DATABASE_CONFIG,
-    'connection_timeout': 6
-}
-
-pool = pooling.MySQLConnectionPool(
-    pool_name="gy_pool",
-    pool_size=5,
-    pool_reset_session=True,
-    **DATABASE_CONFIG_WITH_TIMEOUT
-)
-
-def fetch_leaderboard_data_sync(leaderboard_key: str, limit: int):
-    config = LEADERBOARDS.get(leaderboard_key)
-    if not config:
-        print(f"❌ No config found for key: {leaderboard_key}")
-        return []
-
-    try:
-        connection = pool.get_connection()
-    except mysql.connector.Error as error:
-        print(f"❌ Pool connection failed: {error}")
-        return []
-
-    try:
-        cursor = connection.cursor(dictionary=True)
-
-        if config["join_users"]:
-            query = f"""
-                SELECT u.nickname, l.kills, l.levels_reached
-                FROM {config["table"]} l
-                JOIN Users u ON l.user_id = u.user_id
-                ORDER BY l.levels_reached DESC, l.kills DESC
-                LIMIT %s
-            """
-        else:
-            if leaderboard_key == "3ull":
-                query = f"""
-                    SELECT user_id as nickname, kills, levels_reached
-                    FROM {config["table"]}
-                    ORDER BY levels_reached DESC, kills DESC
-                    LIMIT %s
-                """
-            else:
-                query = f"""
-                    SELECT username as nickname, kills, levels_reached
-                    FROM {config["table"]}
-                    ORDER BY levels_reached DESC, kills DESC
-                    LIMIT %s
-                """
-
-        cursor.execute(query, (int(limit),))
-        results = cursor.fetchall()
-        return results
-
-    except mysql.connector.Error as error:
-        print(f"❌ Database query failed for {leaderboard_key}: {error}")
-        return []
-    except Exception:
-        print("❌ Unexpected error in fetch_leaderboard_data_sync:")
-        print("".join(traceback.format_exc()))
-        return []
-    finally:
-        try:
-            cursor.close()
-            connection.close()
-        except Exception:
-            pass
 
 # ============================================================================
 # LEADERBOARD DEFINITIONS
@@ -212,10 +145,83 @@ async def get_database_connection():
 
 async def fetch_leaderboard_data(leaderboard_key: str, limit: int = 10) -> List[Dict[str, Any]]:
     """
-    Fetches leaderboard data from the database.
+    Fetches leaderboard data from the database with 24-hour caching.
     """
-    # Offload blocking DB work to a background thread so it never blocks Discord
-    return await asyncio.to_thread(fetch_leaderboard_data_sync, leaderboard_key, limit)
+    cache_key = f"{leaderboard_key}:{limit}"
+    current_time = time.time()
+
+    # Check cache
+    if cache_key in leaderboard_cache:
+        cached_data, timestamp = leaderboard_cache[cache_key]
+        if current_time - timestamp < CACHE_TTL:
+            print(f"🔄 Using cached data for {leaderboard_key}")
+            return cached_data
+
+    # Fetch from database
+    data = await asyncio.to_thread(fetch_leaderboard_data_sync, leaderboard_key, limit)
+
+    # Update cache
+    leaderboard_cache[cache_key] = (data, current_time)
+    print(f"🔄 Cached data for {leaderboard_key}")
+    return data
+    
+    # Get leaderboard configuration
+    config = LEADERBOARDS.get(leaderboard_key)
+    if not config:
+        print(f"❌ No config found for key: {leaderboard_key}")
+        return []
+    
+    # Connect to database
+    connection = await get_database_connection()
+    if not connection:
+        print(f"❌ Database connection failed for {leaderboard_key}")
+        return []
+    
+    try:
+        cursor = connection.cursor(dictionary=True)
+        
+        if config["join_users"]:
+            # For general leaderboard - need to join with Users table to get nicknames
+            query = """
+                SELECT u.nickname, l.kills, l.levels_reached
+                FROM {} l
+                JOIN Users u ON l.user_id = u.user_id  
+                ORDER BY l.levels_reached DESC, l.kills DESC
+                LIMIT %s
+            """.format(config["table"])
+        else:
+            # For tournament leaderboards - check table structure
+            if leaderboard_key == "3ull":
+                # 3ull table has user_id column with usernames
+                query = """
+                    SELECT user_id as nickname, kills, levels_reached
+                    FROM {}
+                    ORDER BY levels_reached DESC, kills DESC  
+                    LIMIT %s
+                """.format(config["table"])
+            else:
+                # Other tournament tables have username column
+                query = """
+                    SELECT username as nickname, kills, levels_reached
+                    FROM {}
+                    ORDER BY levels_reached DESC, kills DESC  
+                    LIMIT %s
+                """.format(config["table"])
+        
+        print(f"🔍 Executing query for {leaderboard_key}: {query}")
+        cursor.execute(query, (limit,))
+        results = cursor.fetchall()
+        print(f"📊 Found {len(results)} results for {leaderboard_key}")
+        
+        return results
+        
+    except mysql.connector.Error as error:
+        print(f"❌ Database query failed for {leaderboard_key}: {error}")
+        return []
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
 
 # ============================================================================
 # DISCORD EMBED CREATION
@@ -278,17 +284,17 @@ class LeaderboardDropdown(discord.ui.Select):
             )
         
         super().__init__(
-    placeholder="Choose a leaderboard to view...",
-    min_values=1,
-    max_values=1,
-    options=options,
-    custom_id="gy_leaderboard_dropdown_v1"
-)
+            placeholder="Choose a leaderboard to view...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="gy_leaderboard_dropdown_v1"
+        )
     
     async def callback(self, interaction: discord.Interaction):
         """
         This function runs when someone selects an option from the dropdown.
-        It fetches the data and shows the leaderboard.
+        It fetches the data and shows the leaderboard, or displays a rate limit message if blocked.
         """
         print(f"🔄 Dropdown callback triggered for: {self.values[0]}")
         print(f"🔄 Interaction ID: {interaction.id}")
@@ -297,14 +303,15 @@ class LeaderboardDropdown(discord.ui.Select):
         try:
             # Show "thinking" message while we fetch data
             print("🔄 About to defer interaction...")
-            await interaction.response.defer(thinking=True)
+            if not interaction.response.is_done():
+                await interaction.response.defer(thinking=True)
             print("✅ Interaction deferred successfully")
         
             # Get the selected leaderboard
             selected_leaderboard = self.values[0]
             print(f"🔄 Processing leaderboard: {selected_leaderboard}")
         
-            # Fetch data from database
+            # Fetch data from database (or cache)
             data = await fetch_leaderboard_data(selected_leaderboard)
             print(f"🔄 Got {len(data)} records from database")
         
@@ -317,26 +324,43 @@ class LeaderboardDropdown(discord.ui.Select):
             await interaction.followup.send(embed=embed, ephemeral=False)
             print(f"✅ Sent leaderboard for: {selected_leaderboard}")
         
+        except discord.errors.HTTPException as e:
+            if e.status == 429:
+                print(f"❌ Rate limited: {e}")
+                print("".join(traceback.format_exc()))
+                try:
+                    await interaction.followup.send(
+                        "❌ The leaderboard is temporarily unavailable due to rate limits. Please try again later.",
+                        ephemeral=True
+                    )
+                    print("✅ Sent rate limit message to user")
+                except Exception as followup_error:
+                    print(f"❌ Could not send rate limit message: {followup_error}")
+            else:
+                print(f"❌ Error in callback: {e}")
+                print(f"❌ Error type: {type(e)}")
+                print("".join(traceback.format_exc()))
+                try:
+                    await interaction.followup.send("❌ Something went wrong! Please try again later.", ephemeral=True)
+                except:
+                    print("❌ Could not send error message")
         except Exception as e:
             print(f"❌ Error in callback: {e}")
             print(f"❌ Error type: {type(e)}")
             print("".join(traceback.format_exc()))
             try:
-                if not interaction.response.is_done():
-                    await interaction.response.send_message("❌ Something went wrong!", ephemeral=True)
-                else:
-                    await interaction.followup.send("❌ Something went wrong!", ephemeral=True)
+                await interaction.followup.send("❌ Something went wrong! Please try again later.", ephemeral=True)
             except:
                 print("❌ Could not send error message")
 
 class LeaderboardView(discord.ui.View):
     """
-    This class holds the dropdown menu and handles timeouts.
+    This class holds the dropdown menu and is configured for persistence.
     """
     
     def __init__(self):
         print("🔧 Creating LeaderboardView...")
-        super().__init__(timeout=900)  # Menu expires in 15 minutes
+        super().__init__(timeout=None)  # Persistent view
         print("🔧 Adding dropdown to view...")
         self.add_item(LeaderboardDropdown())
         print("✅ LeaderboardView created successfully")
@@ -425,30 +449,31 @@ async def on_ready():
         connection.close()
     else:
         print('❌ Database connection failed!')
-
-    # Register persistent view so old dropdowns keep working after restart
+        # Register persistent view so old dropdowns keep working after restart
     try:
         bot.add_view(LeaderboardView())
         print("✅ Persistent view registered")
     except Exception as e:
         print(f"⚠️ Could not register persistent view: {e}")
 
-# Temporarily disabled error handler to debug double embeds
-# @bot.event
-# async def on_command_error(ctx, error):
-#     """
-#     This handles errors gracefully so users get helpful messages
-#     instead of the bot just breaking.
-#     """
-#     if isinstance(error, commands.CommandNotFound):
-#         # Don't respond to invalid commands to avoid spam
-#         return
-#     else:
-#         # Log other errors with more detail
-#         print(f"❌ Command error in {ctx.command}: {error}")
-#         print(f"❌ Error type: {type(error)}")
-#         print(f"❌ Full error: {str(error)}")
-#         await ctx.send("❌ Something went wrong! Please try again later.")
+@bot.event
+async def on_command_error(ctx, error):
+    """
+    Handles errors gracefully so users get helpful messages.
+    """
+    if isinstance(error, commands.CommandNotFound):
+        return
+    elif isinstance(error, commands.CommandOnCooldown):
+        remaining_time = error.retry_after
+        minutes = int(remaining_time // 60)
+        seconds = int(remaining_time % 60)
+        await ctx.send(f"Leaderboard is cooling down. Try again in {minutes}m {seconds}s.")
+        return
+    else:
+        print(f"❌ Command error in {ctx.command}: {error}")
+        print(f"❌ Error type: {type(error)}")
+        print(f"❌ Full error: {str(error)}")
+        await ctx.send("❌ Something went wrong! Please try again later.")
 
 # ============================================================================
 # RUN THE BOT
